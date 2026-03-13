@@ -1,10 +1,11 @@
 import React, { useRef } from 'react';
-import { FilePlus, Camera, Image, Volume2, Mic, Settings } from 'lucide-react';
+import { FilePlus, Camera, Image, Volume2, Mic, Settings, Send } from 'lucide-react';
 import { generateTTS, extractTextFromImage, extractTextFromPdf } from '../utils/api';
 
 export default function InputBar({
     inputText,
     onTextChange,
+    onSend,
     onOpenDrawer,
     onOpenTalkModal,
     setLoading,
@@ -15,7 +16,17 @@ export default function InputBar({
     const pdfInputRef = useRef(null);
 
     const handleTextInput = (e) => {
-        onTextChange(e.target.value || 'CLARIVA **');
+        onTextChange(e.target.value);
+    };
+
+    const handleKeyDown = (e) => {
+        // Send on Enter (without Shift). Shift+Enter inserts a newline.
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (inputText.trim()) {
+                onSend();
+            }
+        }
     };
 
     const handleTTS = async () => {
@@ -51,20 +62,26 @@ export default function InputBar({
             try {
                 const base64 = ev.target.result.split(',')[1];
                 const mimeType = file.type || 'image/png';
-                const text = await extractTextFromImage(base64, mimeType);
+                console.log('[InputBar] Image loaded, type:', mimeType, 'base64 length:', base64?.length);
+                const text = await extractTextFromImage(base64, mimeType, setStatus);
                 if (text) {
                     onTextChange(text);
-                    setStatus('Text extracted!');
+                    setStatus('Text extracted! Press Send to format.');
                 } else {
                     setStatus('No text found in image');
                 }
             } catch (err) {
                 console.error('OCR Error:', err);
-                setStatus('Image scan failed');
+                setStatus(`Image scan failed: ${err.message}`);
             } finally {
                 setLoading(false);
-                setTimeout(() => setStatus(''), 3000);
+                setTimeout(() => setStatus(''), 5000);
             }
+        };
+        reader.onerror = (err) => {
+            console.error('FileReader error:', err);
+            setStatus('Failed to read image file');
+            setLoading(false);
         };
         reader.readAsDataURL(file);
 
@@ -74,8 +91,6 @@ export default function InputBar({
 
     /**
      * Handles PDF upload. Extracts text from all pages using pdf.js.
-     * If pdf.js finds no text (scanned PDF), falls back to converting
-     * pages to images and using Vision API OCR.
      */
     const handlePdfChange = async (e) => {
         const file = e.target.files[0];
@@ -89,7 +104,7 @@ export default function InputBar({
 
             if (text && text.trim()) {
                 onTextChange(text);
-                setStatus('PDF text extracted!');
+                setStatus('PDF text extracted! Press Send to format.');
             } else {
                 setStatus('No readable text found in PDF');
             }
@@ -98,7 +113,7 @@ export default function InputBar({
             setStatus('PDF reading failed');
         } finally {
             setLoading(false);
-            setTimeout(() => setStatus(''), 3000);
+            setTimeout(() => setStatus(''), 5000);
         }
 
         // Reset input so the same file can be re-selected
@@ -143,13 +158,23 @@ export default function InputBar({
                 </button>
             </div>
 
-            <input
+            <textarea
                 className="text-input"
-                type="text"
-                placeholder="Type or scan text..."
+                placeholder="Type or scan text... (Enter to send, Shift+Enter for new line)"
                 value={inputText}
                 onChange={handleTextInput}
+                onKeyDown={handleKeyDown}
+                rows={2}
             />
+
+            <button
+                className="send-btn"
+                onClick={() => { if (inputText.trim()) onSend(); }}
+                title="Send to Format"
+                disabled={!inputText.trim()}
+            >
+                <Send />
+            </button>
 
             <div className="input-action-group">
                 <button className="tts-btn" onClick={handleTTS} title="Text to Speech">

@@ -2,8 +2,6 @@ import React from 'react';
 import { DATASET } from '../data/dataset';
 
 export default function TextDisplay({ preferences, inputText, contentRef }) {
-    const words = inputText.split(/\s+/);
-
     const style = {
         fontFamily: preferences.font,
         fontSize: preferences.font_size + 'px',
@@ -38,20 +36,33 @@ export default function TextDisplay({ preferences, inputText, contentRef }) {
         );
     };
 
+    const renderWord = (word, wordIdx) => {
+        if (!word) return null;
+        return (
+            <React.Fragment key={wordIdx}>
+                <span className="inline-block">
+                    {word.split('').map((char, charIdx) => renderChar(char, charIdx))}
+                </span>
+                {' '}
+            </React.Fragment>
+        );
+    };
+
+    // Split text into paragraphs by any newline(s)
+    // Each line break creates a new paragraph for clear visual separation
+    const paragraphs = inputText.split(/\n/).map(p => p.trim()).filter(Boolean);
+
     return (
         <main className="main-area">
             <div className="main-container">
                 <div className="text-container no-scrollbar">
                     <div className="formatted-content" ref={contentRef} style={style}>
-                        {words.map((word, wordIdx) => {
-                            if (!word) return null;
+                        {paragraphs.map((paragraph, pIdx) => {
+                            const words = paragraph.split(/\s+/);
                             return (
-                                <React.Fragment key={wordIdx}>
-                                    <span className="inline-block">
-                                        {word.split('').map((char, charIdx) => renderChar(char, charIdx))}
-                                    </span>
-                                    {' '}
-                                </React.Fragment>
+                                <p key={pIdx} className="paragraph-block">
+                                    {words.map((word, wordIdx) => renderWord(word, wordIdx))}
+                                </p>
                             );
                         })}
                     </div>

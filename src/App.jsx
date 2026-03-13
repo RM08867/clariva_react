@@ -14,7 +14,8 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 
 function ReaderPage() {
     const [preferences, setPreferences] = useState({ ...DEFAULT_PREFS });
-    const [inputText, setInputText] = useState('CLARIVA--Drop your text here.');
+    const [inputText, setInputText] = useState('');
+    const [displayText, setDisplayText] = useState('CLARIVA');
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [talkModalOpen, setTalkModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -30,11 +31,18 @@ function ReaderPage() {
         setPreferences(JSON.parse(JSON.stringify(DEFAULT_PREFS)));
     }, []);
 
+    const handleSend = useCallback(() => {
+        if (inputText.trim()) {
+            setDisplayText(inputText.trim());
+            setInputText('');
+        }
+    }, [inputText]);
+
     return (
         <div className="reader-layout">
             <Header
                 preferences={preferences}
-                inputText={inputText}
+                inputText={displayText}
                 formattedContentRef={formattedContentRef}
                 isLoading={isLoading}
                 statusMsg={statusMsg}
@@ -42,7 +50,7 @@ function ReaderPage() {
 
             <TextDisplay
                 preferences={preferences}
-                inputText={inputText}
+                inputText={displayText}
                 contentRef={formattedContentRef}
             />
 
@@ -57,6 +65,7 @@ function ReaderPage() {
             <InputBar
                 inputText={inputText}
                 onTextChange={setInputText}
+                onSend={handleSend}
                 onOpenDrawer={() => setDrawerOpen(true)}
                 onOpenTalkModal={() => setTalkModalOpen(true)}
                 setLoading={setIsLoading}
