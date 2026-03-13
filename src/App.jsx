@@ -17,6 +17,8 @@ function ReaderPage() {
     const [inputText, setInputText] = useState('CLARIVA--Drop your text here.');
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [talkModalOpen, setTalkModalOpen] = useState(false);
+    const [selectedWord, setSelectedWord] = useState('');
+    const [talkMode, setTalkMode] = useState('word');
     const [isLoading, setIsLoading] = useState(false);
     const [statusMsg, setStatusMsg] = useState('');
 
@@ -44,6 +46,11 @@ function ReaderPage() {
                 preferences={preferences}
                 inputText={inputText}
                 contentRef={formattedContentRef}
+                onWordClick={(word) => {
+                    setSelectedWord(word);
+                    setTalkMode('word');
+                    setTalkModalOpen(true);
+                }}
             />
 
             <PreferencesDrawer
@@ -58,7 +65,11 @@ function ReaderPage() {
                 inputText={inputText}
                 onTextChange={setInputText}
                 onOpenDrawer={() => setDrawerOpen(true)}
-                onOpenTalkModal={() => setTalkModalOpen(true)}
+                onOpenTalkModal={() => {
+                    setSelectedWord(inputText); 
+                    setTalkMode('passage');
+                    setTalkModalOpen(true);
+                }}
                 setLoading={setIsLoading}
                 setStatus={setStatusMsg}
             />
@@ -66,6 +77,17 @@ function ReaderPage() {
             <TalkModal
                 isOpen={talkModalOpen}
                 onClose={() => setTalkModalOpen(false)}
+                targetWord={selectedWord}
+                mode={talkMode}
+                onTranscriptConfirm={(newText) => {
+                    // Append or replace depending on current text
+                    if (inputText === 'CLARIVA--Drop your text here.') {
+                        setInputText(newText);
+                    } else {
+                        setInputText(inputText + ' ' + newText);
+                    }
+                    setTalkModalOpen(false);
+                }}
             />
         </div>
     );

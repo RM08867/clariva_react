@@ -1,7 +1,7 @@
 import React from 'react';
 import { DATASET } from '../data/dataset';
 
-export default function TextDisplay({ preferences, inputText, contentRef }) {
+export default function TextDisplay({ preferences, inputText, contentRef, onWordClick }) {
     const words = inputText.split(/\s+/);
 
     const style = {
@@ -47,7 +47,19 @@ export default function TextDisplay({ preferences, inputText, contentRef }) {
                             if (!word) return null;
                             return (
                                 <React.Fragment key={wordIdx}>
-                                    <span className="inline-block">
+                                    <span 
+                                        className="inline-block"
+                                        style={{ cursor: onWordClick ? 'pointer' : 'default' }}
+                                        onClick={() => {
+                                            if (onWordClick) {
+                                                const cleanWord = word.replace(/[.,!?()[\]{}"']/g, '').trim();
+                                                if (cleanWord) {
+                                                    onWordClick(cleanWord);
+                                                }
+                                            }
+                                        }}
+                                        title={onWordClick ? "Click to check pronunciation" : ""}
+                                    >
                                         {word.split('').map((char, charIdx) => renderChar(char, charIdx))}
                                     </span>
                                     {' '}
