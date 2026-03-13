@@ -34,6 +34,9 @@ export async function generateTTS(text) {
                         },
                     },
                 },
+                systemInstruction: {
+                    parts: [{ text: "Speak with a natural Indian English accent. Use a warm, clear, and friendly tone." }],
+                },
             }),
         }
     );

@@ -748,6 +748,423 @@ body {
   cursor: pointer;
 }
 
+/* --- Clickable Words --- */
+.word-clickable {
+  display: inline-block;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 2px;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.word-clickable:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.word-selected {
+  background: rgba(37, 99, 235, 0.15);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+  border-radius: 6px;
+}
+
+.word-select-active {
+  cursor: pointer;
+}
+
+.word-select-active:hover {
+  background: rgba(37, 99, 235, 0.18);
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.3);
+  transform: scale(1.05);
+  transition: all 0.15s;
+}
+
+.word-select-banner {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 12px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.875rem;
+  animation: pulse 2s ease-in-out infinite;
+  box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+  margin-bottom: 8px;
+}
+
+/* --- Clickable Text Lines --- */
+.text-line {
+  padding: 4px 8px;
+  border-radius: 8px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  margin-bottom: 2px;
+}
+
+.text-line:hover {
+  background: rgba(37, 99, 235, 0.04);
+  border-left-color: rgba(37, 99, 235, 0.2);
+}
+
+.text-line-selected {
+  background: rgba(37, 99, 235, 0.08);
+  border-left-color: #3b82f6;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.08);
+}
+
+/* --- Speaker Modal --- */
+.speaker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.speaker-modal {
+  background: white;
+  border-radius: 32px;
+  padding: 40px 32px 32px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.3);
+  transform: scale(1);
+  opacity: 1;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.speaker-modal.entering {
+  transform: scale(0.92);
+  opacity: 0;
+}
+
+.speaker-modal-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.speaker-icon-circle {
+  width: 72px;
+  height: 72px;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  color: #2563eb;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  box-shadow: 0 8px 20px -4px rgba(37, 99, 235, 0.2);
+}
+
+.speaker-icon-circle svg {
+  width: 32px;
+  height: 32px;
+}
+
+.speaker-title {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+
+.speaker-desc {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Context Preview */
+.speaker-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  font-size: 0.8125rem;
+}
+
+.speaker-context-label {
+  color: #94a3b8;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.speaker-context-word {
+  color: #2563eb;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Options */
+.speaker-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.speaker-option-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 2px solid #f1f5f9;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.speaker-option-btn:hover:not(.disabled) {
+  border-color: #dbeafe;
+  background: #f8fafc;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.speaker-option-btn:active:not(.disabled) {
+  transform: scale(0.98);
+}
+
+.speaker-option-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.speaker-option-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.speaker-option-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.sentence-icon {
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  color: #2563eb;
+}
+
+.word-icon {
+  background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+  color: #16a34a;
+}
+
+.fulltext-icon {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #d97706;
+}
+
+.speaker-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.speaker-option-title {
+  font-weight: 800;
+  font-size: 0.9375rem;
+  color: #1e293b;
+}
+
+.speaker-option-sub {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Close Button */
+.speaker-close-btn {
+  width: 100%;
+  padding: 16px;
+  background: #f1f5f9;
+  color: #64748b;
+  border-radius: 16px;
+  font-weight: 800;
+  font-size: 0.875rem;
+  letter-spacing: 0.05em;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.speaker-close-btn:hover {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+/* Spinner animation for loading state */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* --- Playback Controls Popup --- */
+.playback-controls {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  animation: playbackSlideUp 0.3s ease-out;
+}
+
+@keyframes playbackSlideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.playback-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 24px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.playback-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.playback-play-btn {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: white;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.playback-play-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
+}
+
+.playback-play-btn:active {
+  transform: scale(0.95);
+}
+
+.playback-stop-btn {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.playback-stop-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.playback-speed-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.playback-speed-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #2563eb;
+  letter-spacing: 0.02em;
+}
+
+.playback-speed-slider {
+  width: 100%;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: linear-gradient(90deg, #dbeafe, #3b82f6);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.playback-speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 3px solid white;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.playback-speed-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.playback-speed-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 3px solid white;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+  cursor: pointer;
+}
+
+.playback-speed-range {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 0.625rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+/* --- Line Select Banner Variant --- */
+.line-select-banner {
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+}
+
 /* --- Utility Classes --- */
 .hidden {
   display: none !important;
