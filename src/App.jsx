@@ -45,6 +45,8 @@ function ReaderPage() {
     const [wordSelectMode, setWordSelectMode] = useState(false);
     const [lineSelectMode, setLineSelectMode] = useState(false);
     const [selectedLineIdx, setSelectedLineIdx] = useState(null);
+    const [selectedWord, setSelectedWord] = useState('');
+    const [talkMode, setTalkMode] = useState('word');
     const [isLoading, setIsLoading] = useState(false);
     const [statusMsg, setStatusMsg] = useState('');
 
@@ -307,7 +309,11 @@ function ReaderPage() {
                 inputText={inputText}
                 onTextChange={setInputText}
                 onOpenDrawer={() => setDrawerOpen(true)}
-                onOpenTalkModal={() => setTalkModalOpen(true)}
+                onOpenTalkModal={() => {
+                    setSelectedWord(inputText);
+                    setTalkMode('passage');
+                    setTalkModalOpen(true);
+                }}
                 onOpenSpeakerModal={() => setSpeakerModalOpen(true)}
                 setLoading={setIsLoading}
                 setStatus={setStatusMsg}
@@ -316,6 +322,17 @@ function ReaderPage() {
             <TalkModal
                 isOpen={talkModalOpen}
                 onClose={() => setTalkModalOpen(false)}
+                targetWord={selectedWord}
+                mode={talkMode}
+                onTranscriptConfirm={(newText) => {
+                    // Append or replace depending on current text
+                    if (inputText === 'CLARIVA--Drop your text here.') {
+                        setInputText(newText);
+                    } else {
+                        setInputText(inputText + ' ' + newText);
+                    }
+                    setTalkModalOpen(false);
+                }}
             />
 
             <SpeakerModal
