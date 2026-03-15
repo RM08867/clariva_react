@@ -1,6 +1,37 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Mic, Volume2, Check } from 'lucide-react';
 
+/**
+ * Simple fuzzy matching using Levenshtein distance.
+ * Returns true if the distance is within the allowed error threshold.
+ */
+function isFuzzyMatch(str1, str2, threshold = 0.25) {
+    if (!str1 || !str2) return str1 === str2;
+    if (str1 === str2) return true;
+
+    const len1 = str1.length;
+    const len2 = str2.length;
+    const matrix = Array.from({ length: len1 + 1 }, () => new Array(len2 + 1).fill(0));
+
+    for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+    for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+
+    for (let i = 1; i <= len1; i++) {
+        for (let j = 1; j <= len2; j++) {
+            const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+            matrix[i][j] = Math.min(
+                matrix[i - 1][j] + 1,      // deletion
+                matrix[i][j - 1] + 1,      // insertion
+                matrix[i - 1][j - 1] + cost // substitution
+            );
+        }
+    }
+
+    const distance = matrix[len1][len2];
+    const maxLen = Math.max(len1, len2);
+    return distance / maxLen <= threshold;
+}
+
 export default function TalkModal({ isOpen, onClose, targetWord = '', mode = 'word' }) {
     const [entering, setEntering] = useState(true);
     const [isListening, setIsListening] = useState(false);
@@ -13,6 +44,7 @@ export default function TalkModal({ isOpen, onClose, targetWord = '', mode = 'wo
             setEntering(true);
             setTranscript('');
             setFeedbackStatus('');
+            // Robust state reset: in word mode, ensure targetWord is the default mispronouncedWord
             setMispronouncedWord(mode === 'word' ? targetWord : '');
             const timer = setTimeout(() => setEntering(false), 20);
             return () => clearTimeout(timer);
@@ -23,7 +55,7 @@ export default function TalkModal({ isOpen, onClose, targetWord = '', mode = 'wo
             }
             setIsListening(false);
         }
-    }, [isOpen, targetWord]);
+    }, [isOpen, targetWord, mode]);
 
     const handleClose = () => {
         if (isListening && window.speechRecognitionInstance) {
@@ -63,30 +95,34 @@ export default function TalkModal({ isOpen, onClose, targetWord = '', mode = 'wo
         recognition.onresult = (event) => {
             const spokenText = event.results[0][0].transcript.trim().toLowerCase();
             const cleanSpoken = spokenText.replace(/[.,!?()[\]{}"']/g, '').replace(/\s+/g, ' ').trim();
+            const spokenNoSpaces = cleanSpoken.replace(/\s+/g, '');
             setTranscript(cleanSpoken);
             
             const cleanTarget = targetWord.replace(/[.,!?()[\]{}"']/g, '').replace(/\s+/g, ' ').toLowerCase().trim();
+            const targetWords = cleanTarget.split(/\s+/);
 
             if (mode === 'word') {
-                if (cleanSpoken === cleanTarget) {
+                const targetNoSpaces = cleanTarget.replace(/\s+/g, '');
+                // Compare joined versions to handle accent-based word splits with 10% fuzzy threshold
+                if (isFuzzyMatch(spokenNoSpaces, targetNoSpaces, 0.1)) {
                     setFeedbackStatus('correct');
                 } else {
                     setFeedbackStatus('wrong');
                 }
             } else if (mode === 'passage') {
-                // For passage mode, we want to ensure that 'you' doesn't match 'your'.
-                // We split the target into words and check if the spoken phrase exists as a whole sequence of words.
-                const targetWords = cleanTarget.split(/\s+/);
-                const spokenWords = cleanSpoken.split(/\s+/);
-                
                 let isMatch = false;
-                // Check if spokenWords sequence exists as a contiguous block in targetWords
-                for (let i = 0; i <= targetWords.length - spokenWords.length; i++) {
-                    const slice = targetWords.slice(i, i + spokenWords.length);
-                    if (slice.join(' ') === cleanSpoken) {
-                        isMatch = true;
-                        break;
+                // Check if the spoken input matches any contiguous sequence of whole words in the target
+                for (let start = 0; start < targetWords.length; start++) {
+                    for (let end = start + 1; end <= targetWords.length; end++) {
+                        const targetSlice = targetWords.slice(start, end);
+                        const targetSliceNoSpaces = targetSlice.join('');
+                        // Apply fuzzy matching (10% error threshold)
+                        if (isFuzzyMatch(targetSliceNoSpaces, spokenNoSpaces, 0.1)) {
+                            isMatch = true;
+                            break;
+                        }
                     }
+                    if (isMatch) break;
                 }
 
                 if (isMatch) {
@@ -95,42 +131,37 @@ export default function TalkModal({ isOpen, onClose, targetWord = '', mode = 'wo
                 } else {
                     setFeedbackStatus('wrong');
                     
-                    const targetWordsArr = cleanTarget.split(/\s+/);
-                    const spokenWordsArr = cleanSpoken.split(/\s+/);
-                    
-                    if (spokenWordsArr.length === 0) {
-                        setMispronouncedWord(targetWordsArr[0]);
+                    if (spokenNoSpaces.length === 0) {
+                        setMispronouncedWord(targetWords[0]);
                         return;
                     }
 
-                    // Best fit alignment logic
+                    // Best fit alignment logic for feedback (with fuzzy awareness)
                     let bestWindowIdx = 0;
                     let maxMatches = -1;
+                    const spokenWordsArr = cleanSpoken.split(/\s+/).filter(Boolean);
                     
-                    for (let i = 0; i <= targetWordsArr.length - spokenWordsArr.length; i++) {
-                        let matches = 0;
-                        for (let j = 0; j < spokenWordsArr.length; j++) {
-                            if (targetWordsArr[i + j] === spokenWordsArr[j]) {
-                                matches++;
+                    if (spokenWordsArr.length > 0) {
+                        for (let i = 0; i <= targetWords.length - spokenWordsArr.length; i++) {
+                            let matches = 0;
+                            for (let j = 0; j < spokenWordsArr.length; j++) {
+                                if (isFuzzyMatch(targetWords[i + j], spokenWordsArr[j], 0.2)) {
+                                    matches++;
+                                }
+                            }
+                            if (matches > maxMatches || (matches === maxMatches && isFuzzyMatch(targetWords[i], spokenWordsArr[0], 0.2))) {
+                                maxMatches = matches;
+                                bestWindowIdx = i;
                             }
                         }
-                        // Prioritize windows that start with a match if match counts are equal
-                        if (matches > maxMatches || (matches === maxMatches && targetWordsArr[i] === spokenWordsArr[0])) {
-                            maxMatches = matches;
-                            bestWindowIdx = i;
-                        }
-                    }
 
-                    // Find the first mismatch within the best window
-                    let targetFeedback = targetWordsArr[bestWindowIdx]; // Default to start of window
-                    for (let j = 0; j < spokenWordsArr.length; j++) {
-                        if (targetWordsArr[bestWindowIdx + j] !== spokenWordsArr[j]) {
-                            targetFeedback = targetWordsArr[bestWindowIdx + j];
-                            break;
-                        }
+                        // Playback the entire attempted segment for context
+                        const attemptedSegment = targetWords.slice(bestWindowIdx, bestWindowIdx + spokenWordsArr.length).join(' ');
+                        setMispronouncedWord(attemptedSegment || targetWords[0]);
+                    } else {
+                        // If nothing was spoken, default to just the first word as a hint to avoid paragraph-wide playback
+                        setMispronouncedWord(targetWords[0]);
                     }
-                    
-                    setMispronouncedWord(targetFeedback || targetWordsArr[0]);
                 }
             }
         };
@@ -150,13 +181,23 @@ export default function TalkModal({ isOpen, onClose, targetWord = '', mode = 'wo
 
     const playCorrectPronunciation = () => {
         if ('speechSynthesis' in window) {
-            // Play only the specific mispronounced word (or the target word in word mode)
-            const textToPlay = mispronouncedWord || targetWord;
+            // Fix bug: Prioritize targetWord in 'word' mode. In passage mode, default to mispronouncedWord 
+            // and fallback to the first word instead of the whole paragraph.
+            const textToPlay = mode === 'word' 
+                ? targetWord 
+                : (mispronouncedWord || targetWord.split(/\s+/)[0]);
+            
+            if (!textToPlay) return;
+
             const utterance = new SpeechSynthesisUtterance(textToPlay);
-            utterance.lang = 'en-IN'; // Request Indian English
+            utterance.lang = 'en-IN'; 
+            utterance.rate = 0.9; 
+            utterance.pitch = 1;
 
             const voices = window.speechSynthesis.getVoices();
-            const indianVoice = voices.find(v => v.lang === 'en-IN');
+            const indianVoice = voices.find(v => v.lang === 'en-IN')
+                || voices.find(v => v.lang.startsWith('en-IN'))
+                || voices.find(v => v.lang === 'hi-IN');
             if (indianVoice) {
                 utterance.voice = indianVoice;
             }
@@ -195,10 +236,18 @@ export default function TalkModal({ isOpen, onClose, targetWord = '', mode = 'wo
                 <div 
                     className={`talk-icon-circle ${isListening ? 'listening' : ''}`} 
                     onClick={toggleListening}
-                    style={{ cursor: 'pointer', transition: 'all 0.3s ease', transform: isListening ? 'scale(1.1)' : 'scale(1)', backgroundColor: isListening ? '#ffebee' : '#f0f0f0', margin: '0 auto' }}
+                    style={{ 
+                        cursor: 'pointer', 
+                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', 
+                        transform: isListening ? 'scale(1.15)' : 'scale(1)', 
+                        backgroundColor: isListening ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0, 0, 0, 0.05)', 
+                        margin: '0 auto',
+                        boxShadow: isListening ? '0 0 20px rgba(239, 68, 68, 0.3)' : 'none',
+                        border: isListening ? '2px solid #ef4444' : '2px solid transparent'
+                    }}
                     title={isListening ? "Stop Listening" : "Start Listening"}
                 >
-                    <Mic color={isListening ? '#d32f2f' : '#666'} />
+                    <Mic size={40} color={isListening ? '#ef4444' : '#64748b'} />
                 </div>
                 
                 {isListening && <p style={{ color: '#d32f2f', fontWeight: 'bold', marginTop: '1rem' }}>Listening...</p>}
@@ -211,13 +260,13 @@ export default function TalkModal({ isOpen, onClose, targetWord = '', mode = 'wo
 
                 {feedbackStatus === 'correct' && targetWord && (
                     <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#e8f5e9', borderRadius: '8px', color: '#2e7d32' }}>
-                        <p style={{ fontWeight: 'bold', margin: '0' }}>✅ Pronunciation is correct!</p>
+                        <p style={{ fontWeight: 'bold', margin: '0' }}>✅ correct pronunciation</p>
                     </div>
                 )}
 
                 {feedbackStatus === 'wrong' && targetWord && (
                     <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#ffebee', borderRadius: '8px', color: '#c62828' }}>
-                        <p style={{ fontWeight: 'bold', marginBottom: '1rem' }}>❌ Pronunciation is wrong.</p>
+                        <p style={{ fontWeight: 'bold', marginBottom: '1rem' }}>❌ answer is wrong</p>
                         <button 
                             onClick={playCorrectPronunciation}
                             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: '#e0e0e0', color: '#333', border: 'none', borderRadius: '4px', cursor: 'pointer', width: '100%', marginBottom: '0' }}
@@ -227,7 +276,7 @@ export default function TalkModal({ isOpen, onClose, targetWord = '', mode = 'wo
                     </div>
                 )}
 
-                <button className="talk-close-btn" onClick={handleClose} style={{ marginTop: '1.5rem', width: '100%' }}>
+                <button className="talk-close-btn" onClick={handleClose} style={{ marginTop: '2rem', width: '100%', borderRadius: '16px' }}>
                     CLOSE
                 </button>
             </div>

@@ -48,13 +48,11 @@ export default function TextDisplay({
         );
     };
 
-    const handleWordClick = (word, e) => {
+    const handleWordClick = (word, lineIdx, wordIdx, e) => {
         if (!onWordClick) return;
-        if (wordSelectMode || lineSelectMode) {
-            e.stopPropagation();
-        }
+        e.stopPropagation();
         const cleanWord = word.replace(/[^a-zA-Z0-9'-]/g, '') || word;
-        onWordClick(cleanWord);
+        onWordClick(cleanWord, lineIdx, wordIdx);
     };
 
     const isSelectMode = wordSelectMode || lineSelectMode;
@@ -91,11 +89,7 @@ export default function TextDisplay({
                                         <React.Fragment key={wordIdx}>
                                             <span
                                                 className={`word-clickable ${isSelectMode ? 'word-select-active' : ''}`}
-                                                onClick={(e) => {
-                                                    if (isSelectMode) {
-                                                        handleWordClick(word, e);
-                                                    }
-                                                }}
+                                                onClick={(e) => handleWordClick(word, lineIdx, wordIdx, e)}
                                             >
                                                 {word.split('').map((char, charIdx) => renderChar(char, charIdx))}
                                             </span>

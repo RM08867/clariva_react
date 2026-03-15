@@ -16,21 +16,31 @@ import AdminLoginPage from './pages/AdminLoginPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 
 /**
- * Extract the sentence containing the clicked word from the full text.
- * Splits by sentence-ending punctuation (. ! ?) and finds which sentence
- * contains the word. Falls back to the full text if no match.
+ * Extract the sentence containing the clicked word from the full text,
+ * using line and word indices to resolve duplicates.
  */
-function findSentenceContainingWord(fullText, clickedWord) {
-    const sentences = fullText.split(/(?<=[.!?])\s+/);
-    const lowerWord = clickedWord.toLowerCase();
+function findSentenceByContext(fullText, clickedWord, lineIdx, wordIdx) {
+    const lines = fullText.split('\n');
+    const targetLine = lines[lineIdx];
+    if (!targetLine) return clickedWord;
 
+    const sentences = targetLine.split(/(?<=[.!?])\s+/);
+    let currentWordGlobalIdx = 0;
+    
+    // Split line into words to find the global index of the clicked word
+    const lineWords = targetLine.split(/\s+/).filter(Boolean);
+    
     for (const sentence of sentences) {
-        const words = sentence.toLowerCase().replace(/[^a-z0-9'\s-]/g, ' ').split(/\s+/);
-        if (words.includes(lowerWord)) {
+        const sentenceWords = sentence.split(/\s+/).filter(Boolean);
+        const sentenceEndIdx = currentWordGlobalIdx + sentenceWords.length;
+        
+        if (wordIdx >= currentWordGlobalIdx && wordIdx < sentenceEndIdx) {
             return sentence.trim();
         }
+        currentWordGlobalIdx = sentenceEndIdx;
     }
-    return fullText;
+    
+    return targetLine.trim(); // Fallback to full line
 }
 
 function ReaderPage() {
@@ -221,27 +231,33 @@ function ReaderPage() {
     const handleStartWordSelect = useCallback(() => {
         setWordSelectMode(true);
         setLineSelectMode(false);
-        setStatusMsg('Click a word to read it aloud');
+        setStatusMsg('Click a word to check pronunciation');
     }, []);
 
     const handleStartLineSelect = useCallback(() => {
         setLineSelectMode(true);
         setWordSelectMode(false);
-        setStatusMsg('Click a word to read its sentence');
+        setStatusMsg('Click a word to check sentence pronunciation');
     }, []);
 
-    const handleWordClick = useCallback(async (word) => {
-        if (wordSelectMode) {
-            setWordSelectMode(false);
-            setStatusMsg('');
-            await speakText(word);
-        } else if (lineSelectMode) {
+    const handleWordClick = useCallback(async (word, lineIdx, wordIdx) => {
+        if (lineSelectMode) {
             setLineSelectMode(false);
             setStatusMsg('');
-            const sentence = findSentenceContainingWord(displayText, word);
-            await speakText(sentence);
+            // Use contextual search to resolve duplicate words
+            const sentence = findSentenceByContext(displayText, word, lineIdx, wordIdx);
+            setSelectedWord(sentence);
+            setTalkMode('passage');
+            setTalkModalOpen(true);
+        } else {
+            // Default behavior: open talk modal for this word
+            setWordSelectMode(false);
+            setStatusMsg('');
+            setSelectedWord(word);
+            setTalkMode('word');
+            setTalkModalOpen(true);
         }
-    }, [wordSelectMode, lineSelectMode, speakText, displayText]);
+    }, [lineSelectMode, displayText]);
 
     return (
         <div className="reader-layout">
@@ -288,7 +304,7 @@ function ReaderPage() {
                 onSend={handleSend}
                 onOpenDrawer={() => setDrawerOpen(true)}
                 onOpenTalkModal={() => {
-                    setSelectedWord(inputText);
+                    setSelectedWord(displayText || inputText);
                     setTalkMode('passage');
                     setTalkModalOpen(true);
                 }}
