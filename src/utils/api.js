@@ -1,6 +1,6 @@
 /**
  * API utility functions for CLARIVA.
- * Handles Gemini API calls for TTS, image OCR, and PDF text extraction.
+ * Handles Groq API calls for TTS, image OCR, and PDF text extraction.
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
@@ -11,7 +11,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
     import.meta.url
 ).toString();
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const API_KEY = import.meta.env.VITE_GROQ_API_KEY;
+const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 
 /**
  * Helper: fetch with automatic retry on 429 (rate limit) errors.
@@ -27,10 +28,16 @@ async function fetchWithRetry(url, options, maxRetries = 2, onRetry = null) {
         const response = await fetch(url, options);
 
         if (response.status === 429 && attempt < maxRetries) {
-            // Parse retry delay from the error response
-            const errorBody = await response.text().catch(() => '');
-            const match = errorBody.match(/retry(?:Delay)?.*?(\d+)/i);
-            const waitSeconds = match ? Math.min(parseInt(match[1]), 30) : 20;
+            // Parse retry delay from response headers or body
+            const retryAfter = response.headers.get('retry-after');
+            let waitSeconds = retryAfter ? parseInt(retryAfter) : 0;
+
+            if (!waitSeconds) {
+                const errorBody = await response.text().catch(() => '');
+                const match = errorBody.match(/retry.*?(\d+)/i);
+                waitSeconds = match ? Math.min(parseInt(match[1]), 30) : 20;
+            }
+            waitSeconds = Math.max(waitSeconds, 5);
 
             console.warn(`[API] Rate limited (429). Retrying in ${waitSeconds}s... (attempt ${attempt + 1}/${maxRetries})`);
             if (onRetry) onRetry(waitSeconds);
@@ -44,49 +51,45 @@ async function fetchWithRetry(url, options, maxRetries = 2, onRetry = null) {
 }
 
 /**
- * Generate text-to-speech audio using Gemini TTS.
+ * Generate text-to-speech audio using Groq PlayAI TTS.
  * @param {string} text - The text to convert to speech.
  * @returns {Promise<HTMLAudioElement>} - An audio element ready to play.
  */
 export async function generateTTS(text) {
+    if (!API_KEY) {
+        throw new Error('Missing API key. Set VITE_GROQ_API_KEY in your .env file.');
+    }
+
     const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts?key=${API_KEY}`,
+        `${GROQ_BASE_URL}/audio/speech`,
         {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${API_KEY}`,
+            },
             body: JSON.stringify({
-                contents: [{ parts: [{ text }] }],
-                generationConfig: {
-                    responseModalities: ["AUDIO"],
-                    speechConfig: {
-                        voiceConfig: {
-                            prebuiltVoiceConfig: { voiceName: "Kore" },
-                        },
-                    },
-                },
-                systemInstruction: {
-                    parts: [{ text: "Speak with a natural Indian English accent. Use a warm, clear, and friendly tone." }],
-                },
+                model: "playai-tts",
+                input: text,
+                voice: "Arista-PlayAI",
+                response_format: "wav",
             }),
         }
     );
 
     if (!response.ok) {
+        const errorBody = await response.text().catch(() => '');
+        console.error('[TTS] API error:', response.status, errorBody);
         throw new Error(`TTS API error: ${response.status}`);
     }
 
-    const result = await response.json();
-    const audioData =
-        result.candidates[0].content.parts[0].inlineData.data;
-    const audioBlob = new Blob(
-        [Uint8Array.from(atob(audioData), (c) => c.charCodeAt(0))],
-        { type: "audio/wav" }
-    );
+    // Groq TTS returns raw audio bytes directly
+    const audioBlob = await response.blob();
     return new Audio(URL.createObjectURL(audioBlob));
 }
 
 /**
- * Extract text from an image using Gemini Vision.
+ * Extract text from an image using Groq Vision (Llama).
  * Automatically retries on rate limit (429) errors.
  * @param {string} base64Data - Base64 encoded image data (without data URL prefix).
  * @param {string} mimeType - MIME type of the image (e.g. "image/jpeg").
@@ -95,32 +98,42 @@ export async function generateTTS(text) {
  */
 export async function extractTextFromImage(base64Data, mimeType = "image/png", onStatus = null) {
     if (!API_KEY) {
-        throw new Error('Missing API key. Set VITE_GEMINI_API_KEY in your .env file.');
+        throw new Error('Missing API key. Set VITE_GROQ_API_KEY in your .env file.');
     }
 
     console.log('[OCR] Starting image extraction, mimeType:', mimeType, 'data length:', base64Data?.length);
 
     const requestBody = JSON.stringify({
-        contents: [
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        messages: [
             {
-                parts: [
-                    { text: "Extract all readable text from this image exactly as it appears. Preserve paragraph breaks using blank lines. Return only the extracted text, no explanations." },
+                role: "user",
+                content: [
                     {
-                        inlineData: {
-                            mimeType,
-                            data: base64Data,
+                        type: "text",
+                        text: "Extract all readable text from this image exactly as it appears. Preserve paragraph breaks using blank lines. Return only the extracted text, no explanations.",
+                    },
+                    {
+                        type: "image_url",
+                        image_url: {
+                            url: `data:${mimeType};base64,${base64Data}`,
                         },
                     },
                 ],
             },
         ],
+        temperature: 0,
+        max_tokens: 4096,
     });
 
     const response = await fetchWithRetry(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`,
+        `${GROQ_BASE_URL}/chat/completions`,
         {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${API_KEY}`,
+            },
             body: requestBody,
         },
         2,
@@ -138,7 +151,7 @@ export async function extractTextFromImage(base64Data, mimeType = "image/png", o
     const data = await response.json();
     console.log('[OCR] API response:', JSON.stringify(data).substring(0, 200));
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    const text = data.choices?.[0]?.message?.content || null;
     if (!text) {
         console.warn('[OCR] No text found in API response. Full response:', JSON.stringify(data));
     }
@@ -166,4 +179,3 @@ export async function extractTextFromPdf(pdfBuffer) {
 
     return textParts.join('\n\n');
 }
-
