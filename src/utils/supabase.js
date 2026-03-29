@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 /**
  * Increment a specific feature count in the feature_usage table.
@@ -14,6 +14,11 @@ export const incrementFeatureCount = async (featureColumn) => {
     // Always update localStorage as a local backup
     const localCount = parseInt(localStorage.getItem(featureColumn)) || 0;
     localStorage.setItem(featureColumn, localCount + 1);
+
+    if (!supabase) {
+        console.warn(`⚠️ Supabase env variables missing. Used localStorage fallback for "${featureColumn}".`);
+        return;
+    }
 
     try {
         // Fetch current count from Supabase

@@ -31,11 +31,87 @@ export default function TalkModal({
         setTimeout(() => onClose(), 300);
     };
 
+    const getLevenshteinDistance = (a, b) => {
+        if (a.length === 0) return b.length;
+        if (b.length === 0) return a.length;
+        const matrix = [];
+        for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+        for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+        for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+                if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                } else {
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j - 1] + 1, // substitution
+                        matrix[i][j - 1] + 1,     // insertion
+                        matrix[i - 1][j] + 1      // deletion
+                    );
+                }
+            }
+        }
+        return matrix[b.length][a.length];
+    };
+
+    const isConfusingPair = (char1, char2) => {
+        const c1 = char1.toLowerCase();
+        const c2 = char2.toLowerCase();
+        for (const group of Object.entries(DATASET.confusing_letter_groups || {})) {
+            const letters = group[1];
+            if (letters.includes(c1) && letters.includes(c2)) return true;
+        }
+        return false;
+    };
+
+    const hasConfusingSubstitution = (t, s) => {
+        if (t.length !== s.length) return false;
+        let diffCount = 0;
+        let diffT = '';
+        let diffS = '';
+        for (let i = 0; i < t.length; i++) {
+            if (t[i] !== s[i]) {
+                diffCount++;
+                diffT = t[i];
+                diffS = s[i];
+            }
+        }
+        return (diffCount === 1 && isConfusingPair(diffT, diffS));
+    };
+
     const isFuzzyMatch = (target, spoken) => {
         const t = target.toLowerCase().replace(/[^a-z0-9]/g, '');
         const s = spoken.toLowerCase().replace(/[^a-z0-9]/g, '');
         if (!t || !s) return false;
-        return t === s; // Exact match only — partial words not accepted
+        if (t === s) return true; // Exact match
+        
+        // Strict failure for dyslexic confusing letter substitutions (e.g. 'b' & 'd', 'p' & 'q')
+        if (hasConfusingSubstitution(t, s)) return false;
+        
+        // Highly common suffix misinterpretations by Speech APIs
+        if (t + 's' === s || t === s + 's') return true;
+        if (t + 'es' === s || t === s + 'es') return true;
+        if (t + 'd' === s || t === s + 'd') return true;
+        if (t + 'ed' === s || t === s + 'ed') return true;
+        
+        // Use Levenshtein distance for minor variations/accents
+        const distance = getLevenshteinDistance(t, s);
+        
+        // If the first letter differs, it's highly likely it's a completely different word
+        // (e.g. 'could' vs 'would', 'take' vs 'make'). We aggressively reject these cases for short words.
+        if (t.length <= 6 && t.charAt(0) !== s.charAt(0)) return false;
+
+        const maxAllowedErrors = Math.floor(t.length / 5);
+        
+        // Allow up to 1 error for longer words (length >= 5) IF it's not a confusing pair
+        const absoluteMax = t.length >= 5 ? Math.max(1, maxAllowedErrors) : 0;
+        return distance <= absoluteMax;
+    };
+
+    const splitIntoSyllables = (word) => {
+        if (!word) return '';
+        const chunks = word.match(/[^aeiouy]*[aeiouy]+(?:[^aeiouy]*$|[^aeiouy](?=[^aeiouy]))?/gi);
+        if (!chunks) return word;
+        return chunks.join(' • ');
     };
 
     const startListening = () => {
@@ -53,8 +129,8 @@ export default function TalkModal({
         const recognition = new SpeechRecognition();
         recognition.continuous = false;
         recognition.interimResults = false;
-        recognition.maxAlternatives = 5;
-        recognition.lang = preferences.voice_accent || 'en-IN';
+        recognition.maxAlternatives = 1;
+        recognition.lang = 'en-IN'; // Force Indian English accent
 
         recognition.onstart = () => setIsListening(true);
         recognition.onend = () => setIsListening(false);
@@ -64,13 +140,12 @@ export default function TalkModal({
             const results = event.results[0];
 
             if (mode === 'word') {
-                let match = { transcript: results[0].transcript, correct: false };
-                for (let i = 0; i < results.length; i++) {
-                    if (isFuzzyMatch(targetWord, results[i].transcript)) {
-                        match = { transcript: results[i].transcript, correct: true };
-                        break;
-                    }
-                }
+                const spokenTop = results[0].transcript;
+                let match = {
+                    transcript: spokenTop,
+                    correct: isFuzzyMatch(targetWord, spokenTop)
+                };
+                
                 setTranscript(match.transcript);
                 setFeedbackStatus(match.correct ? 'correct' : 'wrong');
 
@@ -233,7 +308,7 @@ export default function TalkModal({
                 </div>
 
                 {/* You pronounced */}
-                {transcript && (
+                {transcript && !(feedbackStatus === 'wrong' && mode === 'word') && (
                     <div style={{
                         backgroundColor: 'rgba(255,255,255,0.75)',
                         border: '1px dashed #93c5fd',
@@ -265,74 +340,176 @@ export default function TalkModal({
                     </div>
                 )}
 
-                {/* Feedback: Wrong – Word Mode */}
+                {/* Feedback: Wrong – Word Mode – OVERLAY POPUP */}
                 {feedbackStatus === 'wrong' && mode === 'word' && (
                     <div style={{
-                        backgroundColor: '#FEF2F2',
-                        border: '2px solid #FCA5A5',
-                        borderRadius: '16px',
-                        padding: '1rem 1.25rem',
-                        textAlign: 'center',
-                        marginBottom: '0.5rem',
+                        position: 'fixed',
+                        top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        zIndex: 999999,
+                        backdropFilter: 'blur(3px)'
                     }}>
-                        <XCircle size={26} color="#EF4444" style={{ marginBottom: '6px' }} />
-                        <div style={{ fontWeight: '700', color: '#991B1B', marginBottom: '0.75rem' }}>
-                            wrong pronunciation ❌
+                        <div style={{
+                            backgroundColor: '#FEF2F2',
+                            border: '3px solid #FCA5A5',
+                            borderRadius: '24px',
+                            padding: '2rem',
+                            textAlign: 'center',
+                            maxWidth: '380px',
+                            width: '90%',
+                            boxShadow: '0 25px 50px -12px rgba(239, 68, 68, 0.35)'
+                        }}>
+                             <XCircle size={44} color="#EF4444" style={{ margin: '0 auto 12px' }} />
+                             <div style={{ fontWeight: '900', fontSize: '1.3rem', color: '#991B1B', marginBottom: '1.5rem' }}>
+                                 Wrong Pronunciation ❌
+                             </div>
+                             
+                             {/* The misspelled word */}
+                             <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#7F1D1D', marginBottom: '4px', letterSpacing: '1px' }}>You Said:</div>
+                             <div style={{ fontWeight: '700', fontSize: '1.25rem', color: '#7F1D1D', marginBottom: '1.5rem', fontStyle: 'italic' }}>
+                                 "{transcript}"
+                             </div>
+
+                             {/* The correct word split into syllables */}
+                             <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#1E3A8A', marginBottom: '4px', letterSpacing: '1px' }}>Correct Word:</div>
+                             <div style={{
+                                 backgroundColor: '#ffffff',
+                                 padding: '12px',
+                                 borderRadius: '12px',
+                                 marginBottom: '1.5rem',
+                                 fontWeight: 'bold',
+                                 letterSpacing: '3px',
+                                 color: '#1E3A8A',
+                                 fontSize: '1.35rem',
+                                 textTransform: 'lowercase',
+                                 border: '2px dashed #BFDBFE'
+                             }}>
+                                 {splitIntoSyllables(targetWord)}
+                             </div>
+
+                             {/* Action Buttons */}
+                             <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+                                 <button
+                                     onClick={() => speakWord(targetWord)}
+                                     style={{
+                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                         gap: '0.5rem', padding: '0.9rem',
+                                         background: '#3b82f6', color: 'white', border: 'none',
+                                         borderRadius: '12px', cursor: 'pointer',
+                                         fontWeight: '700', fontSize: '0.95rem',
+                                     }}
+                                 >
+                                     <Volume2 size={20} /> Hear Correct Pronunciation
+                                 </button>
+                                 <button
+                                     onClick={() => {
+                                        setFeedbackStatus('');
+                                        setTranscript('');
+                                     }}
+                                     style={{
+                                         padding: '0.9rem',
+                                         background: '#fecaca', color: '#991b1b', border: 'none',
+                                         borderRadius: '12px', cursor: 'pointer',
+                                         fontWeight: '700', fontSize: '0.95rem',
+                                     }}
+                                 >
+                                     Try Again
+                                 </button>
+                             </div>
                         </div>
-                        <button
-                            onClick={() => speakWord(targetWord)}
-                            style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                gap: '0.5rem', width: '100%', padding: '0.75rem',
-                                background: '#3b82f6', color: 'white', border: 'none',
-                                borderRadius: '12px', cursor: 'pointer',
-                                fontWeight: '700', fontSize: '0.9rem',
-                            }}
-                        >
-                            <Volume2 size={18} /> Hear correct pronunciation
-                        </button>
                     </div>
                 )}
 
-                {/* Feedback: Wrong – Passage Mode */}
+                {/* Feedback: Wrong – Passage Mode – OVERLAY POPUP */}
                 {feedbackStatus === 'wrong' && mode === 'passage' && (
                     <div style={{
-                        backgroundColor: '#FEF2F2',
-                        border: '2px solid #FCA5A5',
-                        borderRadius: '16px',
-                        padding: '1rem 1.25rem',
-                        marginBottom: '0.5rem',
+                        position: 'fixed',
+                        top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        zIndex: 999999,
+                        backdropFilter: 'blur(3px)'
                     }}>
-                        <div style={{ fontWeight: '700', color: '#991B1B', textAlign: 'center', marginBottom: '0.75rem' }}>
-                            ❌ Mispronounced words:
+                        <div style={{
+                            backgroundColor: '#FEF2F2',
+                            border: '3px solid #FCA5A5',
+                            borderRadius: '24px',
+                            padding: '2rem',
+                            textAlign: 'center',
+                            maxWidth: '420px',
+                            width: '90%',
+                            boxShadow: '0 25px 50px -12px rgba(239, 68, 68, 0.35)',
+                            maxHeight: '90vh',
+                            display: 'flex',
+                            flexDirection: 'column'
+                        }}>
+                             <XCircle size={44} color="#EF4444" style={{ margin: '0 auto 12px' }} />
+                             <div style={{ fontWeight: '900', fontSize: '1.3rem', color: '#991B1B', marginBottom: '1.5rem' }}>
+                                 Wrong Pronunciation ❌
+                             </div>
+
+                             {/* The misspelled sentence (transcript) */}
+                             <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#7F1D1D', marginBottom: '4px', letterSpacing: '1px' }}>You Said:</div>
+                             <div style={{ fontWeight: '700', fontSize: '1.1rem', color: '#7F1D1D', marginBottom: '1.5rem', fontStyle: 'italic', maxHeight: '100px', overflowY: 'auto' }}>
+                                 "{transcript}"
+                             </div>
+
+                             {/* List of mispronounced words with syllables */}
+                             <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#1E3A8A', marginBottom: '8px', letterSpacing: '1px' }}>Words to practice:</div>
+                             
+                             {mispronouncedWords.length > 0 ? (
+                                 <div style={{ 
+                                     maxHeight: '200px', overflowY: 'auto', 
+                                     display: 'flex', flexDirection: 'column', gap: '0.5rem',
+                                     marginBottom: '1.5rem', paddingRight: '5px'
+                                 }}>
+                                     {mispronouncedWords.map((w, i) => (
+                                         <div key={i} style={{
+                                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                             backgroundColor: '#ffffff', borderRadius: '12px', padding: '0.75rem 1rem',
+                                             border: '2px dashed #BFDBFE'
+                                         }}>
+                                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left' }}>
+                                                 <span style={{ fontWeight: '800', color: '#1E3A8A', fontSize: '1.1rem', marginBottom: '4px' }}>{w}</span>
+                                                 <span style={{ fontSize: '0.9rem', color: '#3b82f6', letterSpacing: '2px', fontWeight: 'bold' }}>{splitIntoSyllables(w)}</span>
+                                             </div>
+                                             <button
+                                                 onClick={() => speakWord(w)}
+                                                 style={{
+                                                     display: 'flex', alignItems: 'center', gap: '5px',
+                                                     background: '#3b82f6', color: 'white', border: 'none',
+                                                     borderRadius: '8px', padding: '8px 12px',
+                                                     cursor: 'pointer', fontSize: '0.8rem', fontWeight: '700',
+                                                 }}
+                                             >
+                                                 <Volume2 size={16} /> Listen
+                                             </button>
+                                         </div>
+                                     ))}
+                                 </div>
+                             ) : (
+                                 <p style={{ textAlign: 'center', color: '#6B7280', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                                     Could not detect spoken words. Please try again.
+                                 </p>
+                             )}
+
+                             {/* Action Button */}
+                             <button
+                                 onClick={() => {
+                                    setFeedbackStatus('');
+                                    setTranscript('');
+                                 }}
+                                 style={{
+                                     padding: '0.9rem', width: '100%',
+                                     background: '#fecaca', color: '#991b1b', border: 'none',
+                                     borderRadius: '12px', cursor: 'pointer',
+                                     fontWeight: '700', fontSize: '0.95rem',
+                                 }}
+                             >
+                                 Try Again
+                             </button>
                         </div>
-                        {mispronouncedWords.length > 0 ? (
-                            <div style={{ maxHeight: '160px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                {mispronouncedWords.map((w, i) => (
-                                    <div key={i} style={{
-                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                        backgroundColor: '#ffffff', borderRadius: '10px', padding: '0.6rem 0.9rem',
-                                    }}>
-                                        <span style={{ fontWeight: '700', color: '#1E3A8A', textTransform: 'capitalize' }}>{w}</span>
-                                        <button
-                                            onClick={() => speakWord(w)}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: '5px',
-                                                background: '#3b82f6', color: 'white', border: 'none',
-                                                borderRadius: '8px', padding: '5px 12px',
-                                                cursor: 'pointer', fontSize: '0.78rem', fontWeight: '700',
-                                            }}
-                                        >
-                                            <Volume2 size={13} /> Listen
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <p style={{ textAlign: 'center', color: '#6B7280', fontSize: '0.85rem' }}>
-                                Could not detect spoken words. Please try again.
-                            </p>
-                        )}
                     </div>
                 )}
 
